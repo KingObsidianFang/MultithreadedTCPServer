@@ -8,11 +8,13 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <iostream>
+#include <thread>
 
 #pragma comment (lib, "Ws2_32.lib")
 
 #define DEFAULT_BUFLEN 512
 #define DEFAULT_PORT "27015"
+#define MAXTHREADCOUNT 4
 
 //Function Prototypes
 
@@ -21,7 +23,14 @@ int main()
 	//Variables
 	int iResult;//An int used in error checking
 	WSADATA wsaData; //used to start up winsock
-	addrinfo hints;  //used to define what kind of connection we want
+	addrinfo hints; //used to define what kind of connection we want
+	addrinfo* result;  //used to store 
+	SOCKET ListenSocket = NULL;//The socket we listen for connections on
+	SOCKET ClientSocket[MAXTHREADCOUNT]; //The socket that represents our client connection
+	int currentSoc = 0;
+	int oldestSoc = 0;
+	int threadCount = 0; //The current thread count
+	HANDLE hThread[MAXTHREADCOUNT];
 
 	//Initialize Winsock
 	iResult = WSAStartup(MAKEWORD(2, 2), &wsaData); //Initializes winsock & says we're using winsock 2.2, 
@@ -44,14 +53,54 @@ int main()
 
 
 	//Getting information about addresses on our system
-	iResult = getaddrinfo(NULL, DEFAULT_PORT, &hints, NULL); //1st param is a host name(I don't understand this yet)
+	iResult = getaddrinfo(NULL, DEFAULT_PORT, &hints, &result); //1st param is a host name(I don't understand this yet)
 															//2nd param is a port
 															//pointer to our hints struct telling what types of connections we want info for
-															//pointer to addrinfo we want to store the info in
+															//pointer to a pointer that points to the addrinfo we want to store the info in
 	if (iResult != 0)//error check, the rest will be the same as the init check refer back to that if you need explanation
 	{
 		printf("getaddrinfo failed with error: %d\n", iResult);
 		WSACleanup();
 		return 1;
+	}
+
+	ListenSocket = socket(result->ai_family, result->ai_socktype, result->ai_protocol);//makes a socket of the type we defined in hints
+																					   //we use the socket later to listen for client connections
+	if (ListenSocket == INVALID_SOCKET)//error check
+	{
+		printf("socket failed with error: %d\n", WSAGetLastError);
+		freeaddrinfo(result);  //frees the memory used in the getaddrinfo return
+		WSACleanup();
+		return 1;
+	}
+
+	iResult = bind(ListenSocket, result->ai_addr, (int)result->ai_addrlen); //Binds our new socket to the port we defined
+
+	if (iResult == SOCKET_ERROR)//error checking
+	{
+		printf("bind failed with error: %d\n", WSAGetLastError());
+		freeaddrinfo(result);
+		closesocket(ListenSocket); //close the socket we just opened to free up resources
+		WSACleanup();
+		return 1;
+	}
+	freeaddrinfo(result);//frees up the memory used in get addrinfo, we don't need this beacuse 
+						//we've already bound the listening socket we want
+	while (1) {//infinite loop to handle client accepts and start threads accordingly
+		ClientSocket[currentSoc] = accept(ListenSocket, NULL, NULL); //Accepts the client connection on our current ClientSocket
+		if (ClientSocket[currentSoc] == INVALID_SOCKET) {//error checking
+			printf("accept failed with error: %d\n", WSAGetLastError());
+			closesocket(ListenSocket);
+			WSACleanup();
+			return 1;
+		}
+		else if (threadCount == MAXTHREADCOUNT)
+		{
+
+		}
+		else
+		{
+			
+		}
 	}
 }
