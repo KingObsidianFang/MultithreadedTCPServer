@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <iostream>
 #include <thread>
+#include <vector>
 
 #pragma comment (lib, "Ws2_32.lib")
 
@@ -17,6 +18,7 @@
 #define MAXTHREADCOUNT 4
 
 //Function Prototypes
+int clientWork(SOCKET clientSocket);
 
 int main()
 {
@@ -26,11 +28,9 @@ int main()
 	addrinfo hints; //used to define what kind of connection we want
 	addrinfo* result;  //used to store 
 	SOCKET ListenSocket = NULL;//The socket we listen for connections on
-	SOCKET ClientSocket[MAXTHREADCOUNT]; //The socket that represents our client connection
+	SOCKET ClientSocket; //The socket that represents our client connection
 	int currentSoc = 0;
-	int oldestSoc = 0;
-	int threadCount = 0; //The current thread count
-	HANDLE hThread[MAXTHREADCOUNT];
+	std::vector<std::thread> ths;
 
 	//Initialize Winsock
 	iResult = WSAStartup(MAKEWORD(2, 2), &wsaData); //Initializes winsock & says we're using winsock 2.2, 
@@ -84,23 +84,63 @@ int main()
 		WSACleanup();
 		return 1;
 	}
-	freeaddrinfo(result);//frees up the memory used in get addrinfo, we don't need this beacuse 
+
+	freeaddrinfo(result);//frees up the memory used in getaddrinfo, we don't need this beacuse 
 						//we've already bound the listening socket we want
+
 	while (1) {//infinite loop to handle client accepts and start threads accordingly
-		ClientSocket[currentSoc] = accept(ListenSocket, NULL, NULL); //Accepts the client connection on our current ClientSocket
-		if (ClientSocket[currentSoc] == INVALID_SOCKET) {//error checking
+		iResult = listen(ListenSocket, SOMAXCONN);
+		if (iResult == SOCKET_ERROR)
+		{
+			printf("listen failed with error: %d\n", WSAGetLastError());
+			closesocket(ListenSocket);
+			WSACleanup();
+			return 1;
+		}
+		ClientSocket = accept(ListenSocket, NULL, NULL); //Accepts the client connection on our current ClientSocket
+		if (ClientSocket == INVALID_SOCKET) {//error checking
 			printf("accept failed with error: %d\n", WSAGetLastError());
 			closesocket(ListenSocket);
 			WSACleanup();
 			return 1;
 		}
-		else if (threadCount == MAXTHREADCOUNT)
-		{
-
-		}
 		else
 		{
-			
+			ths.push_back(std::thread(clientWork, ClientSocket));
 		}
 	}
+	closesocket(ListenSocket);
+	WSACleanup();
+}
+
+int clientWork(SOCKET clientSocket)
+{
+	int iResult, iSendResult;
+	char recvbuf[DEFAULT_BUFLEN];
+	int recvbuflen = DEFAULT_BUFLEN;
+
+	iResult = recv(clientSocket, recvbuf, recvbuflen, 0);
+	if (iResult > 0) {
+		printf("Message: %s\n", recvbuf);
+		printf("Bytes received: %d\n", iResult);
+		// Echo the buffer back to the sender
+		iSendResult = send(clientSocket, recvbuf, iResult, 0);
+		if (iSendResult == SOCKET_ERROR) {
+			printf("send failed with error: %d\n", WSAGetLastError());
+			closesocket(clientSocket);
+			WSACleanup();
+			return 1;
+		}
+		printf("Bytes sent: %d\n", iSendResult);
+	}
+	else if (iResult == 0)
+		printf("Connection closing...\n");
+	else {
+		printf("recv failed with error: %d\n", WSAGetLastError());
+		closesocket(clientSocket);
+		WSACleanup();
+		return 1;
+	}
+
+	closesocket(clientSocket);
 }
